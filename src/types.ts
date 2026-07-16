@@ -49,4 +49,4 @@ export interface Insight {
   color: string;
 }
 
-export type TabId = 'dashboard' | 'rank' | '3dhome';
+export type TabId = 'dashboard' | 'rank' | '3dhome' | 'kiri' | 'chatbot';

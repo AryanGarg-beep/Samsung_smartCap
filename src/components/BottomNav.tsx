@@ -1,10 +1,12 @@
-import { Home, Award, Box } from 'lucide-react';
+import { Home, Award, Box, ScanLine, MessageSquare } from 'lucide-react';
 import type { TabId } from '../types';
 
 const TABS: { id: TabId; icon: typeof Home; label: string }[] = [
   { id: 'dashboard', icon: Home, label: 'Dashboard' },
   { id: 'rank', icon: Award, label: 'Energy Rank' },
   { id: '3dhome', icon: Box, label: '3D Home' },
+  { id: 'kiri', icon: ScanLine, label: 'Kiri Scan' },
+  { id: 'chatbot', icon: MessageSquare, label: 'AI Chat' },
 ];
 
 interface BottomNavProps {
