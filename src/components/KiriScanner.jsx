@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Camera, CheckCircle2, ImagePlus, Sparkles, UploadCloud } from 'lucide-react';
 
-const KIRI_API_KEY = 'kiri_s_d7SHghBWSNwCyPVoQGmL7zQYkHnqtqW1LbgALpiro';
+const KIRI_API_KEY = import.meta.env.VITE_KIRI_API_KEY;
 const KIRI_API_BASE_URL = 'https://api.kiriengine.app/api';
 
 function getNestedValue(payload, keys) {
@@ -61,8 +61,8 @@ export function KiriScanner({ onScanComplete }) {
       return;
     }
 
-    if (KIRI_API_KEY === 'YOUR_KIRI_API_KEY') {
-      setError('Paste your Kiri API key into the component before running the scan.');
+    if (!KIRI_API_KEY) {
+      setError('Missing Kiri API key. Set VITE_KIRI_API_KEY in your .env file before running the scan.');
       return;
     }
 
