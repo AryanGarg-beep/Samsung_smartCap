@@ -1,6 +1,6 @@
 ﻿<div align="center">
 
-# ⚡ Samsung SmartCap
+# ⚡ SamSave
 
 ### A Smart Home Energy Management Dashboard
 
