@@ -1,11 +1,12 @@
 import { useState } from 'react';
-import type { Appliance, Automation, TabId } from './types';
+import type { Appliance, Automation, TabId, MatchState, MatchHistoryEntry } from './types';
 import { initialAppliances } from './data/appliances';
 import { initialAutomations } from './data/automations';
 import { insights } from './data/insights';
 import { Dashboard } from './views/Dashboard';
 import { EnergyRank } from './views/EnergyRank';
 import { Home3D } from './views/Home3D';
+import { GameView } from './views/GameView';
 import { ApplianceModal } from './components/ApplianceModal';
 import { AutomationModal } from './components/AutomationModal';
 import { BottomNav } from './components/BottomNav';
@@ -13,6 +14,7 @@ import { KiriScanner } from './components/KiriScanner.jsx';
 import { Chatbot } from './views/Chatbot';
 import { IntroScreen } from './components/IntroScreen';
 import { lookupProduct, generateAutomations } from './utils/coachAgent';
+import { NOT_STARTED_MATCH } from './utils/gameEngine';
 
 export default function App() {
   const [showIntro, setShowIntro] = useState(true);
@@ -23,6 +25,13 @@ export default function App() {
   const [automations, setAutomations] = useState(initialAutomations);
   const [dashboardNotice, setDashboardNotice] = useState<{ message: string; tone: 'success' | 'warning' } | null>(null);
   const [scannedModelUrl, setScannedModelUrl] = useState('/models/appartement.glb');
+  const [matchState, setMatchState] = useState<MatchState>(NOT_STARTED_MATCH);
+  const [matchHistory, setMatchHistory] = useState<MatchHistoryEntry[]>([]);
+  const [hasSeenTutorial, setHasSeenTutorial] = useState(false);
+
+  const handleMatchComplete = (entry: MatchHistoryEntry) => {
+    setMatchHistory((prev) => [...prev, entry]);
+  };
 
   const COACH_AGENT_FAILURE_NOTICE = "Couldn't verify live specs — using general guidance.";
 
@@ -146,7 +155,18 @@ export default function App() {
           onDismissDashboardNotice={() => setDashboardNotice(null)}
         />
       )}
-      {activeTab === 'rank' && <EnergyRank />}
+      {activeTab === 'game' && (
+        <GameView
+          appliances={appliances}
+          automations={automations}
+          matchState={matchState}
+          onMatchStateChange={setMatchState}
+          onMatchComplete={handleMatchComplete}
+          hasSeenTutorial={hasSeenTutorial}
+          onTutorialSeen={() => setHasSeenTutorial(true)}
+        />
+      )}
+      {activeTab === 'rank' && <EnergyRank matchHistory={matchHistory} />}
       {activeTab === '3dhome' && (
         <Home3D
           appliances={appliances}

@@ -25,7 +25,8 @@ There is no test suite, linter, or formatter configured in this repo.
 
 **Views** (`src/views/`) — top-level screens rendered by `App.tsx`:
 - `Dashboard.tsx` — live power draw summary, appliance grid, automations list, insights panel.
-- `EnergyRank.tsx` — gamification screen (XP, achievements, upgrade suggestions). Fully self-contained with its own local `STATS`/`ACHIEVEMENTS` constants — does not receive props from `App.tsx`.
+- `EnergyRank.tsx` — gamification results screen (XP, rank, achievements). Receives `matchHistory` from `App.tsx` and derives all stats live from it (`src/data/ranks.ts`, `src/data/achievements.ts`) — no hardcoded numbers.
+- `GameView.tsx` — the 7-round match itself (control points, power-up toggles, combo penalties, scoring). See "Game loop" below.
 - `Home3D.tsx` — CSS-only isometric "3D" floor plan visualizing appliance locations and live energy flow (SVG lines from a central panel to each active appliance).
 
 **Components** (`src/components/`) — shared UI: `ApplianceModal` (detail/inspection modal opened via `onSelectAppliance`), `BottomNav`, `StarIcon`.
@@ -38,7 +39,7 @@ Tailwind CSS with a hand-rolled "chunky toy" design system defined in `src/index
 - Signature look: thick `4px` dark borders (`#2D3436`) + solid offset "shadow" (e.g. `shadow-[0_8px_0_0_#2D3436]`) that shrinks on hover/active to fake a pressed-button effect. Reuse the `.toy-card` class and this shadow pattern for new card-like UI rather than inventing a new style.
 - Hex colors are used directly in JSX (`text-[#3498DB]`, etc.) rather than Tailwind theme tokens — there is no central color token setup, so match existing hex values when adding UI (`#2D3436` dark/ink, `#3498DB` blue, `#2ECC71` green, `#F1C40F` yellow, `#E74C3C` red, `#9B59B6` purple).
 - Font is Nunito (loaded via Google Fonts `@import` in `index.css`), weights 400/600/800/900, used almost exclusively at `font-black`.
-- Custom animations/effects (`energy-bar`, `pop-in`, `iso-*`, `glow-*`, `energy-path`, `rank-progress`) are defined as CSS classes in `index.css` and applied via `className`, not Tailwind utilities.
+- Custom animations/effects (`energy-bar`, `pop-in`, `iso-*`, `glow-*`, `energy-path`, `xp-bar-fill`, `float-up-fade`, `cool-pulse`, `clock-shift`, `daylight-swap`) are defined as CSS classes in `index.css` and applied via `className`, not Tailwind utilities. The game-loop ones are all transform/opacity only and wrapped in a `prefers-reduced-motion` block — the first such handling in this app; keep new animations inside that same block.
 - Currency is Indian Rupees (`₹`), and units are metric (kWh, kg CO₂).
 
 ## Real Data — Source of Truth
@@ -70,8 +71,12 @@ or read them from `src/data/household.json` once that file exists.
   estimate (badge + confidence text: "Based on published specs for X" or "No specific data found —
   showing typical X guidance"), never presented as if it were measured. Fabricating a number
   *without* that labeling is still forbidden.
-- `EnergyRank.tsx`'s local `STATS`/`ACHIEVEMENTS` constants are placeholder — XP/score should
-  eventually derive from real weekly kWh-saved, not be hardcoded.
+- `EnergyRank.tsx` has no local placeholder constants anymore — XP/rank/achievements all derive
+  from real `matchHistory` (`src/utils/gameEngine.ts`'s `toHistoryEntry`), fed by real matches
+  played in `GameView.tsx`. The only genuinely invented numbers left in the game loop are the
+  rank-tier XP thresholds themselves (`src/data/ranks.ts`) — there's no real data to derive
+  "how much cumulative XP = a rank" from, unlike every kWh/XP-per-kWh/combo-multiplier figure,
+  which all trace to real automation/appliance data (see `gameEngine.ts`'s comments for each).
 
 ## Planned Architecture
 
@@ -96,6 +101,16 @@ a quick fix. Three modes, one wrapper (`callGemini(prompt, useSearch)`):
 - No key configured (`VITE_GEMINI_API_KEY` unset) → every mode falls back to a deterministic mock
   (product-lookup always resolves "generic, nothing found"; chatbot mode returns `null` and the
   caller uses the existing local template answer) — the whole app works with zero live calls.
-- Game loop (not started): 7 rounds = 7 real days, control points spent on abilities per round,
-  combo penalty when overlapping high-draw appliances fire in the same hour. Explicitly out of
-  scope for the Coach Agent work above.
+- Game loop is now implemented (`src/views/GameView.tsx`, `src/utils/gameEngine.ts`): 7 rounds =
+  the 5 real measured automations reframed as per-round power-up toggles, 3 control points/round,
+  combo penalties grounded in the real washer/heater overlap spike ratio (1.434×, averaged from
+  the two measured spikes in `laundry_stagger.evidence`). Round 1 = the real May 8 laundry event,
+  Round 4 = the real May 11 one (kept 3 rounds apart to match the real 3-day gap) — every other
+  appliance behaves identically every round, matching their own automations' "100%/consistent all
+  7 days" confidence text. Only measured automations/appliances participate; generic Coach
+  Agent-created cards are not involved in round mechanics. kWh only, no ₹ conversion anywhere in
+  the game (same open TODO as `costMonthly` elsewhere). Entirely in-memory, no persistence, same
+  as the rest of the app — a page reload resets both the current match and `matchHistory`.
+  **Clean next step, not built**: a Coach Agent "play mode" hook for live one-line feedback during
+  rounds — `chatbotSynthesize`/`generateAutomations`'s existing mock-fallback + guardrail-filtered
+  pattern is ready to slot into `gameEngine.ts`'s `resolveRound` whenever that's wanted.

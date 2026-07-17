@@ -128,11 +128,63 @@ body {
   animation: dashFlow 1s linear infinite;
 }
 
-/* Rank Ladder Animations */
-@keyframes fillUp {
-  from { height: 0%; }
-  to { height: 100%; }
+/* ── Game loop animations ──────────────────────────────────── */
+
+/* XP bar fill — animates a scale sweep rather than literally animating
+   `width` (transform/opacity only); the element's real width is already
+   set inline to the true percentage, so this is a visual fill-in effect
+   over the already-correct final size. */
+@keyframes xpFillScale {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
 }
-.rank-progress {
-  animation: fillUp 1.5s ease-out forwards;
+.xp-bar-fill {
+  transform-origin: left;
+  animation: xpFillScale 1.2s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+/* Round-resolution floating "+X kWh saved" / "-Y combo damage" text */
+@keyframes floatUpFade {
+  0% { transform: translate(-50%, -50%) translateY(0); opacity: 1; }
+  100% { transform: translate(-50%, -50%) translateY(-60px); opacity: 0; }
+}
+.float-up-fade {
+  animation: floatUpFade 1.3s ease-out forwards;
+}
+
+/* Per-power-up activation flourishes */
+@keyframes coolPulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.15); opacity: 0.7; }
+}
+.cool-pulse {
+  animation: coolPulse 0.6s ease-in-out;
+}
+
+@keyframes clockShift {
+  0% { transform: rotate(0deg); }
+  50% { transform: rotate(25deg); }
+  100% { transform: rotate(0deg); }
+}
+.clock-shift {
+  animation: clockShift 0.6s ease-in-out;
+}
+
+@keyframes daylightSwap {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+.daylight-swap {
+  animation: daylightSwap 0.6s ease-in-out;
+}
+
+/* Respect the user's motion preference — the first such handling in this app. */
+@media (prefers-reduced-motion: reduce) {
+  .xp-bar-fill,
+  .float-up-fade,
+  .cool-pulse,
+  .clock-shift,
+  .daylight-swap {
+    animation: none !important;
+  }
 }
