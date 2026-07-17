@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Sparkles, Upload, Maximize } from 'lucide-react';
+import { Sparkles, Upload, Maximize, X } from 'lucide-react';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
@@ -195,6 +195,16 @@ function ThreeDViewEngine({ appliances, modelUrl, customManager, onModelChange, 
     spatialTagsRef.current = spatialTags;
   }, [spatialTags]);
 
+  // Spatial tags store a raycasted world-space position from whichever model
+  // was loaded when they were placed — meaningless once a different model is
+  // loaded, so clear them (and any in-progress tag-placement dialog) on every
+  // model switch rather than letting stale tags render against new geometry.
+  useEffect(() => {
+    setSpatialTags([]);
+    tagElementsRef.current = {};
+    setPendingTag(null);
+  }, [modelUrl]);
+
   useEffect(() => {
     if (triggerRecenter && triggerRecenter > 0 && cameraRef.current) {
       targetFlyState.current = {
@@ -301,6 +311,12 @@ function ThreeDViewEngine({ appliances, modelUrl, customManager, onModelChange, 
   // Main scene setup — rebuilds on model change
   useEffect(() => {
     if (!mountRef.current) return;
+
+    // Cancel any in-flight fly-to/recenter camera animation — its target was
+    // computed against the previous model's geometry (or spatial tags that
+    // just got cleared above), so it must not carry over to the fresh camera
+    // this effect is about to create for the newly-loaded model.
+    targetFlyState.current = null;
 
     // 1. Core WebGL Setup
     const scene = new THREE.Scene();
@@ -562,6 +578,17 @@ function ThreeDViewEngine({ appliances, modelUrl, customManager, onModelChange, 
             style={{ display: 'none' }}
           >
             {Icon && <Icon className="w-4 h-4" />}
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setSpatialTags((prev) => prev.filter((t) => t.id !== tag.id));
+                delete tagElementsRef.current[tag.id];
+              }}
+              title="Remove tag"
+              className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-white border border-[#2D3436] rounded-full flex items-center justify-center text-[#2D3436]"
+            >
+              <X className="w-2.5 h-2.5" strokeWidth={3} />
+            </button>
           </div>
         );
       })}
