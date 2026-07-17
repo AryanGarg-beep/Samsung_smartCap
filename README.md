@@ -207,6 +207,9 @@ All Samsung product names are trademarks of Samsung Electronics Co., Ltd.
 
 ---
 
+### Link
+https://samsung-smartcap.onrender.com
+
 <div align="center">
 
 Built with ⚡ by the SmartCap team
