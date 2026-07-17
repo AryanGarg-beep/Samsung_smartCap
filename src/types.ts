@@ -32,6 +32,13 @@ export interface Appliance {
   ruleSource: RuleSource;
   notes?: string;
   photo?: string;
+  // Only meaningful when ruleSource === 'generic' — whether the Coach Agent's
+  // product lookup matched this card to a specific real product (true) or
+  // fell back to generic category guidance because nothing specific/
+  // unambiguous was found (false). Undefined for measured cards, which were
+  // never looked up at all.
+  identified?: boolean;
+  matchedProductName?: string;
 }
 
 export interface Automation {

@@ -56,6 +56,7 @@ async function callGemini(prompt: string, useSearch: boolean): Promise<GeminiCal
     if (!res.ok) return { text: null, didFail: true };
 
     const data = await res.json();
+    console.log('Coach Agent raw API response:', data);
     const text = data?.candidates?.[0]?.content?.parts?.[0]?.text ?? null;
     return { text, didFail: text === null }; // empty/safety-blocked response counts as a failure too
   } catch (err) {

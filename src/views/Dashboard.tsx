@@ -4,6 +4,7 @@ import type { Appliance, Automation, Insight } from '../types';
 import { StarIcon } from '../components/StarIcon';
 import { CreateCardModal } from '../components/CreateCardModal';
 import { RuleSourceBadge } from '../components/RuleSourceBadge';
+import { IdentifiedBadge } from '../components/IdentifiedBadge';
 
 interface DashboardProps {
   appliances: Appliance[];
@@ -13,7 +14,7 @@ interface DashboardProps {
   onToggleAppliance: (id: string) => void;
   onToggleAutomation: (id: string) => void;
   onSelectAutomation: (automation: Automation) => void;
-  onAddCard: (appliance: Appliance, autos: Automation[], liveCallFailed?: boolean) => void;
+  onAddCard: (name: string, notes: string | undefined, photo: string | undefined) => void;
   onDeleteCard: (id: string) => void;
   dashboardNotice: { message: string; tone: 'success' | 'warning' } | null;
   onDismissDashboardNotice: () => void;
@@ -167,6 +168,9 @@ export function Dashboard({
                     ))}
                   </div>
                   <RuleSourceBadge source={app.ruleSource} />
+                  {app.ruleSource === 'generic' && (
+                    <IdentifiedBadge identified={app.identified} matchedProductName={app.matchedProductName} />
+                  )}
                 </div>
 
                 <div className="flex flex-col items-center mt-14 space-y-4">

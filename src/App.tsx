@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import type { Appliance, Automation, TabId, MatchState, MatchHistoryEntry } from './types';
 import { initialAppliances } from './data/appliances';
 import { initialAutomations } from './data/automations';
@@ -15,6 +15,7 @@ import { KiriScanner } from './components/KiriScanner.jsx';
 import { Chatbot } from './views/Chatbot';
 import { IntroScreen } from './components/IntroScreen';
 import { lookupProduct, generateAutomations } from './utils/coachAgent';
+import { pickIcon } from './utils/iconGuess';
 import { NOT_STARTED_MATCH } from './utils/gameEngine';
 
 export default function App() {
@@ -29,6 +30,11 @@ export default function App() {
   const [matchState, setMatchState] = useState<MatchState>(NOT_STARTED_MATCH);
   const [matchHistory, setMatchHistory] = useState<MatchHistoryEntry[]>([]);
   const [hasSeenTutorial, setHasSeenTutorial] = useState(false);
+  // Cards deleted while their background Coach Agent lookup is still in
+  // flight must not come back to life (or gain orphaned automations) once
+  // that lookup resolves — a ref survives across renders without needing to
+  // be a dependency of the async resolver below.
+  const deletedCardIdsRef = useRef(new Set<string>());
 
   const handleMatchComplete = (entry: MatchHistoryEntry) => {
     setMatchHistory((prev) => [...prev, entry]);
@@ -50,17 +56,104 @@ export default function App() {
     }
   };
 
-  const handleAddCard = (appliance: Appliance, autos: Automation[], liveCallFailed?: boolean) => {
-    setAppliances((prev) => [...prev, appliance]);
-    setAutomations((prev) => [...prev, ...autos]);
-    if (liveCallFailed) {
+  // Runs after the card already exists on-screen — looks up real specs and
+  // generates automations in the background, then patches the same card (and
+  // adds its automations) in place once that resolves. Never awaited by the
+  // caller; the card is fully usable (toggleable, deletable) the whole time.
+  const resolveNewCardDetails = async (id: string, name: string, notes?: string) => {
+    try {
+      const spec = await lookupProduct(name, notes);
+      const genResult = await generateAutomations(spec, name);
+
+      if (deletedCardIdsRef.current.has(id)) return; // deleted mid-lookup — don't resurrect it
+
+      const liveCallFailed = spec.liveCallFailed || genResult.liveCallFailed;
+      const confidenceText = spec.status === 'specific'
+        ? `Based on published specs for ${spec.matchedProductName}, not measured from your usage`
+        : `No specific data found — showing typical ${spec.category} guidance`;
+      const identified = spec.status === 'specific';
+      const matchedProductName = spec.matchedProductName ?? undefined;
+      const icon = pickIcon(spec.category, name);
+      const baseWatts = Math.round((spec.estimatedWattsLow + spec.estimatedWattsHigh) / 2);
+      const recommendation = genResult.automations[0]?.desc ?? 'No recommendation generated yet.';
+
+      setAppliances((prev) => prev.map((a) => (a.id === id
+        ? { ...a, type: spec.category, baseWatts, icon, recommendation, identified, matchedProductName }
+        : a)));
+      if (inspectedCard?.id === id) {
+        setInspectedCard((prev) => (prev
+          ? { ...prev, type: spec.category, baseWatts, icon, recommendation, identified, matchedProductName }
+          : prev));
+      }
+
+      const autos: Automation[] = genResult.automations.map((g, i) => ({
+        id: `${id}-auto-${i}`,
+        name: g.name,
+        desc: g.desc,
+        savingVal: g.savingVal,
+        active: false,
+        why: g.why,
+        evidence: g.evidence,
+        confidence: confidenceText,
+        tradeoff: g.tradeoff,
+        ruleSource: 'generic',
+        applianceIds: [id],
+      }));
+      setAutomations((prev) => [...prev, ...autos]);
+
+      if (liveCallFailed) {
+        setDashboardNotice({ message: COACH_AGENT_FAILURE_NOTICE, tone: 'warning' });
+      }
+    } catch (err) {
+      console.error(err);
+      if (deletedCardIdsRef.current.has(id)) return;
+      // Leave the card's other placeholder fields as-is, but don't leave the
+      // badge stuck on "Identifying…" forever — resolve it to "not identified".
+      setAppliances((prev) => prev.map((a) => (a.id === id ? { ...a, identified: false } : a)));
+      if (inspectedCard?.id === id) {
+        setInspectedCard((prev) => (prev ? { ...prev, identified: false } : prev));
+      }
       setDashboardNotice({ message: COACH_AGENT_FAILURE_NOTICE, tone: 'warning' });
     }
+  };
+
+  const handleAddCard = (name: string, notes: string | undefined, photo: string | undefined) => {
+    const id = `card-${Date.now()}`;
+    const appliance: Appliance = {
+      id,
+      name,
+      type: 'Uncategorized',
+      efficiency: 3,
+      color: '#EAEAEA',
+      accent: '#9B59B6',
+      baseWatts: 0,
+      todayKwh: 0,
+      monthlyKwh: 0,
+      weeklyKwh: 0,
+      costMonthly: 0, // TODO: no measured usage yet, pending real data
+      icon: pickIcon('', name),
+      recommendation: 'Looking up automation ideas…',
+      status: 'OFF',
+      voltage: 'Unknown',
+      runtime: 'Not yet measured',
+      carbon: '— kg', // TODO: no measured usage yet, pending real data
+      savings: '—',
+      pos: { top: '50%', left: '50%' },
+      ruleSource: 'generic',
+      notes,
+      photo,
+      identified: undefined, // pending — Coach Agent lookup runs in the background below
+    };
+
+    setAppliances((prev) => [...prev, appliance]);
+    resolveNewCardDetails(id, name, notes); // fire-and-forget; card is already live
   };
 
   const handleDeleteCard = (id: string) => {
     const removed = appliances.find((a) => a.id === id);
     if (!removed) return;
+
+    deletedCardIdsRef.current.add(id);
 
     const before = appliances.reduce((acc, a) => acc + a.weeklyKwh, 0);
     const after = before - removed.weeklyKwh;
@@ -107,6 +200,13 @@ export default function App() {
       if (spec.liveCallFailed || genResult.liveCallFailed) {
         setDashboardNotice({ message: COACH_AGENT_FAILURE_NOTICE, tone: 'warning' });
         return;
+      }
+
+      const identified = spec.status === 'specific';
+      const matchedProductName = spec.matchedProductName ?? undefined;
+      setAppliances((prev) => prev.map((a) => (a.id === id ? { ...a, identified, matchedProductName } : a)));
+      if (inspectedCard?.id === id) {
+        setInspectedCard((prev) => (prev ? { ...prev, identified, matchedProductName } : prev));
       }
 
       const confidenceText = spec.status === 'specific'

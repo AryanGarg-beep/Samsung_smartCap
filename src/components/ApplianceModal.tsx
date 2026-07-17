@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { X, Play, Square, Sparkles, Pencil, Trash2, ImagePlus } from 'lucide-react';
 import type { Appliance } from '../types';
 import { RuleSourceBadge } from './RuleSourceBadge';
+import { IdentifiedBadge } from './IdentifiedBadge';
 
 interface ApplianceModalProps {
   appliance: Appliance;
@@ -100,6 +101,9 @@ export function ApplianceModal({ appliance, onClose, onToggle, onDelete, onEdit 
               {appliance.status === 'ON' ? 'Running' : 'Standby Mode'}
             </span>
             <RuleSourceBadge source={appliance.ruleSource} />
+            {appliance.ruleSource === 'generic' && (
+              <IdentifiedBadge identified={appliance.identified} matchedProductName={appliance.matchedProductName} />
+            )}
           </div>
 
           {isEditing ? (
