@@ -25,8 +25,10 @@ There is no test suite, linter, or formatter configured in this repo.
 
 **Views** (`src/views/`) — top-level screens rendered by `App.tsx`:
 - `Dashboard.tsx` — live power draw summary, appliance grid, automations list, insights panel.
-- `EnergyRank.tsx` — gamification screen (XP, achievements, upgrade suggestions). Fully self-contained with its own local `STATS`/`ACHIEVEMENTS` constants — does not receive props from `App.tsx`.
+- `EnergyRank.tsx` — gamification results screen (XP, rank, achievements). Receives `matchHistory` from `App.tsx` and derives all stats live from it (`src/data/ranks.ts`, `src/data/achievements.ts`) — no hardcoded numbers.
+- `GameView.tsx` — the 7-round match itself (control points, power-up toggles, combo penalties, scoring). See "Game loop" below.
 - `Home3D.tsx` — CSS-only isometric "3D" floor plan visualizing appliance locations and live energy flow (SVG lines from a central panel to each active appliance).
+- `Discover.tsx` — static cross-sell screen, 3 real Samsung.com product listings (`src/data/discoverProducts.ts`). Vendor-published specs/model numbers/URLs, not measured household data — no `ruleSource`, no kWh ties, the "every number traces to the household table" Hard Rule below doesn't apply here. No price field (Samsung's own page owns current pricing). Each card also shows the real current appliance's weeklyKwh next to `estimatedWeeklySavingsKwh` — **that one field is hardcoded/invented, a deliberate exception to the Hard Rule below**, confirmed by the project owner after being offered two real alternatives (a live Coach Agent lookup scaled against real weeklyKwh; a real ISEER-formula estimate for the AC specifically) and choosing to hardcode all 3 instead. See the field's doc comment in `src/types.ts` for the full reasoning — do not extend this exception to any other number in the app without the same explicit confirmation. Also includes a self-reported "I Upgraded to This" button — one-time +1000 XP (`UPGRADE_BONUS_XP`, `src/utils/gameEngine.ts`) and a "Home Upgrader" achievement, both clearly labeled honor-system/not verified (no purchase backend exists).
 
 **Components** (`src/components/`) — shared UI: `ApplianceModal` (detail/inspection modal opened via `onSelectAppliance`), `BottomNav`, `StarIcon`.
 
@@ -38,7 +40,7 @@ Tailwind CSS with a hand-rolled "chunky toy" design system defined in `src/index
 - Signature look: thick `4px` dark borders (`#2D3436`) + solid offset "shadow" (e.g. `shadow-[0_8px_0_0_#2D3436]`) that shrinks on hover/active to fake a pressed-button effect. Reuse the `.toy-card` class and this shadow pattern for new card-like UI rather than inventing a new style.
 - Hex colors are used directly in JSX (`text-[#3498DB]`, etc.) rather than Tailwind theme tokens — there is no central color token setup, so match existing hex values when adding UI (`#2D3436` dark/ink, `#3498DB` blue, `#2ECC71` green, `#F1C40F` yellow, `#E74C3C` red, `#9B59B6` purple).
 - Font is Nunito (loaded via Google Fonts `@import` in `index.css`), weights 400/600/800/900, used almost exclusively at `font-black`.
-- Custom animations/effects (`energy-bar`, `pop-in`, `iso-*`, `glow-*`, `energy-path`, `rank-progress`) are defined as CSS classes in `index.css` and applied via `className`, not Tailwind utilities.
+- Custom animations/effects (`energy-bar`, `pop-in`, `iso-*`, `glow-*`, `energy-path`, `xp-bar-fill`, `float-up-fade`, `cool-pulse`, `clock-shift`, `daylight-swap`) are defined as CSS classes in `index.css` and applied via `className`, not Tailwind utilities. The game-loop ones are all transform/opacity only and wrapped in a `prefers-reduced-motion` block — the first such handling in this app; keep new animations inside that same block.
 - Currency is Indian Rupees (`₹`), and units are metric (kWh, kg CO₂).
 
 ## Real Data — Source of Truth
@@ -59,18 +61,61 @@ or read them from `src/data/household.json` once that file exists.
 ## Hard Rules
 
 - Never generate or allow a rule/automation that proposes full shutoff of the AC or refrigerator
-  (heat-safety constraint — India, 40°C+ summers). Mode/setpoint changes only.
-- Every `Automation` and every Coach Agent output must reference a real number from the table above.
-  If a proposed rule can't be traced to one, reject it before it reaches the UI.
-- `EnergyRank.tsx`'s local `STATS`/`ACHIEVEMENTS` constants are placeholder — XP/score should
-  eventually derive from real weekly kWh-saved, not be hardcoded.
+  (heat-safety constraint — India, 40°C+ summers). Mode/setpoint changes only. Enforced at
+  runtime by `checkShutoffGuard` (`src/utils/guardrail.ts`), called both at module-load over the
+  static `automations.ts` array and at runtime over every Coach Agent-generated automation and
+  chatbot answer before it reaches the UI.
+- Every `Automation` and every Coach Agent output must reference a real number from the table above
+  **when `ruleSource === 'measured'`**. **Exception**: a `ruleSource: 'generic'` card (user-created
+  via the Coach Agent's product-lookup flow, see below) may show an AI-estimated wattage/category
+  guidance number instead — this is allowed specifically because it's clearly labeled as an
+  estimate (badge + confidence text: "Based on published specs for X" or "No specific data found —
+  showing typical X guidance"), never presented as if it were measured. Fabricating a number
+  *without* that labeling is still forbidden.
+- `EnergyRank.tsx` has no local placeholder constants anymore — XP/rank/achievements all derive
+  from real `matchHistory` (`src/utils/gameEngine.ts`'s `toHistoryEntry`), fed by real matches
+  played in `GameView.tsx`. The only genuinely invented numbers left in the game loop are the
+  rank-tier XP thresholds themselves (`src/data/ranks.ts`) — there's no real data to derive
+  "how much cumulative XP = a rank" from, unlike every kWh/XP-per-kWh/combo-multiplier figure,
+  which all trace to real automation/appliance data (see `gameEngine.ts`'s comments for each).
 
-## Planned Architecture (not yet implemented)
+## Planned Architecture
 
-- Deterministic EDA (plain JS/TS, not the agent) computes summary stats from household data.
-- Coach Agent = Gemini API call, two modes:
-  - Setup mode: summary stats → generates `Automation[]` (replaces `automations.ts` seed data)
-  - Play mode: game event → one-line grounded feedback
-  - The agent is prompted with fresh context per household, never fine-tuned/trained.
-- Game loop (not started): 7 rounds = 7 real days, control points spent on abilities per round,
-  combo penalty when overlapping high-draw appliances fire in the same hour.
+The Coach Agent is now implemented (`src/utils/coachAgent.ts`) — a client-side Gemini wrapper,
+**not** a backend proxy. This is a deliberate scope tradeoff for a 5-day capstone: the Gemini API
+key (`VITE_GEMINI_API_KEY`) is called directly from the browser, baked into the client bundle at
+build time exactly like `VITE_KIRI_API_KEY` already was (see `KiriScanner.jsx`'s exposure-disclosure
+comment) — visible in the shipped JS via devtools. **Do not add a backend proxy for this without
+asking first** — if key protection genuinely matters later, that's a real architecture change, not
+a quick fix. Three modes, one wrapper (`callGemini(prompt, useSearch)`):
+- **Product-lookup mode** (`lookupProduct`, `useSearch: true`) — used when a user creates a new
+  appliance card by name; searches for the specific product's published specs, or falls back to
+  category-level generic guidance if nothing specific/unambiguous is found.
+- **Setup mode** (`generateAutomations`, `useSearch: false`) — generates 1-2 `Automation`s for a
+  *new* card only, from its product-lookup result. **Never regenerates the 5 real, hardened
+  `ruleSource: 'measured'` automations in `automations.ts`** — those stay exactly as verified.
+- **Chatbot mode** (`chatbotSynthesize`, `useSearch: false`) — writes the chatbot's final answer
+  from live-retrieved context (`src/utils/liveKnowledge.ts`, built fresh from the current
+  `appliances`/`automations` state), only once the existing local Layer 0/1/2 routing
+  (greeting/identity/domain-vocab/relevance) has already accepted the query — those stay 100%
+  local and free, unchanged.
+- No key configured (`VITE_GEMINI_API_KEY` unset) → every mode falls back to a deterministic mock
+  (product-lookup always resolves "generic, nothing found"; chatbot mode returns `null` and the
+  caller uses the existing local template answer) — the whole app works with zero live calls.
+- Game loop is now implemented (`src/views/GameView.tsx`, `src/utils/gameEngine.ts`): 7 rounds =
+  the 5 real measured automations reframed as per-round power-up toggles, 2 control points/round
+  (tightened from an original 3 — with 3-4 activatable power-ups per round, 3 CP left enough slack
+  to dodge every combo penalty for free; 2 forces a real tradeoff each round), combo penalties
+  grounded in the real washer/heater overlap spike ratio (1.434×, averaged from the two measured
+  spikes in `laundry_stagger.evidence`) and applied to BOTH overlapping appliances' real per-round
+  shares (not just one), which round is the laundry round is randomized each match (always keeping
+  the real 3-day gap between the washing machine's two dated events, May 8 and May 11 — possible
+  placements are rounds (1,4)/(2,5)/(3,6)/(4,7)) — every other appliance behaves identically every
+  round, matching their own automations' "100%/consistent all 7 days" confidence text. Only
+  measured automations/appliances participate; generic Coach Agent-created cards are not involved
+  in round mechanics. kWh only, no ₹ conversion anywhere in the game (same open TODO as
+  `costMonthly` elsewhere). Entirely in-memory, no persistence, same
+  as the rest of the app — a page reload resets both the current match and `matchHistory`.
+  **Clean next step, not built**: a Coach Agent "play mode" hook for live one-line feedback during
+  rounds — `chatbotSynthesize`/`generateAutomations`'s existing mock-fallback + guardrail-filtered
+  pattern is ready to slot into `gameEngine.ts`'s `resolveRound` whenever that's wanted.
